@@ -124,6 +124,19 @@ window.addEventListener('message', (e) => {
 
 → **[完整 API 文档](docs/embed-api.zh.md)** — 所有消息类型、参数说明及示例，包含鉴权、只读模式、保存流程等。
 
+### XLSX 指定区域查看器
+
+如果只需要显示某个工作表的固定区域，不需要编辑器工具栏、公式栏、工作表标签等界面，可以嵌入独立查看页：
+
+```html
+<iframe
+  src="https://your-deployment/xlsx-range-viewer.html?file=/files/report.xlsx&sheetName=Sheet1&range=A1:AG15"
+  style="width: 100%; height: 640px; border: 0"
+></iframe>
+```
+
+支持 `file` / `url` / `src` / `path`、`sheetName` / `sheet`、`range` / `area`、`credentials` 等参数。完整说明见 [iframe 嵌入 API](docs/embed-api.zh.md)。
+
 ---
 
 ## 🚀 部署

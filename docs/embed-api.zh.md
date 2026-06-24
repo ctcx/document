@@ -154,6 +154,36 @@ window.addEventListener('message', async (event) => {
 
 ---
 
+## XLSX 指定区域查看器
+
+如果只需要像报表一样显示某个工作表的固定区域，不需要编辑器工具栏、公式栏、工作表标签等界面，可以使用独立页面：
+
+```text
+/xlsx-range-viewer.html
+```
+
+示例：
+
+```html
+<iframe
+  src="https://your-deployment/xlsx-range-viewer.html?file=/files/report.xlsx&sheetName=Sheet1&range=A1:AG15"
+  style="width: 100%; height: 640px; border: 0"
+></iframe>
+```
+
+支持的 URL 参数：
+
+| 参数                         | 说明                                           |
+| ---------------------------- | ---------------------------------------------- |
+| `file` / `url` / `src` / `path` | XLSX 文件地址，支持同源相对路径或允许 CORS 的 URL |
+| `sheetName` / `sheet`        | 工作表名称；不传时使用第一个工作表             |
+| `range` / `area`             | 要显示的区域，例如 `A1:AG15`；不传时显示表格有效区域 |
+| `credentials`                | 是否携带 Cookie，默认 `true`                   |
+
+注意：浏览器不能直接读取 `C:\...` 这类本机文件路径；如果文件接口需要鉴权，推荐让目标文件 URL 与查看器同源，并通过 Cookie/session 授权，或让服务端返回允许跨域访问的 CORS 响应。
+
+---
+
 ## 查询当前状态
 
 ```js

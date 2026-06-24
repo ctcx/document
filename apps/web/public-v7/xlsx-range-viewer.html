@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XLSX Range Viewer</title>
+    <script src="./libs/sheetjs/xlsx.full.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        overflow: auto;
+        color: #000;
+        background: #fff;
+        font-family: Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif;
+      }
+
+      #status {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        color: #4b5563;
+        font-size: 14px;
+      }
+
+      #status[hidden],
+      #viewer[hidden] {
+        display: none !important;
+      }
+
+      #status.error {
+        color: #b91c1c;
+      }
+
+      #viewer {
+        width: max-content;
+        min-width: 100%;
+      }
+
+      table {
+        border-collapse: collapse;
+        table-layout: fixed;
+        background: #fff;
+      }
+
+      td {
+        min-width: 46px;
+        height: 40px;
+        border: 1px solid #cfcfcf;
+        padding: 0 4px;
+        overflow: hidden;
+        color: #000;
+        background: #fff;
+        font-size: 18px;
+        line-height: 1.2;
+        vertical-align: middle;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      td.merged {
+        overflow: visible;
+      }
+
+      td.empty {
+        color: transparent;
+      }
+
+      @media print {
+        body {
+          overflow: visible;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status">正在加载...</div>
+    <div id="viewer" hidden></div>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const fileUrl = params.get('file') || params.get('url') || params.get('src') || params.get('path');
+      const sheetName = params.get('sheetName') || params.get('sheet') || '';
+      const rangeText = params.get('range') || params.get('area') || '';
+      const statusEl = document.getElementById('status');
+      const viewerEl = document.getElementById('viewer');
+
+      function showError(message) {
+        statusEl.textContent = message;
+        statusEl.classList.add('error');
+        statusEl.hidden = false;
+        viewerEl.hidden = true;
+      }
+
+      function getQueryBoolean(name, defaultValue) {
+        const value = params.get(name);
+        if (value == null) return defaultValue;
+        return value === '' || value === '1' || value === 'true' || value === 'yes';
+      }
+
+      function getCellText(cell) {
+        if (!cell) return '';
+        if (cell.w != null) return String(cell.w);
+        if (cell.v == null) return '';
+        return String(cell.v);
+      }
+
+      function normalizeRange(sheet) {
+        const ref = rangeText || sheet['!ref'];
+        if (!ref) throw new Error('工作表没有可显示的数据区域');
+        return XLSX.utils.decode_range(ref);
+      }
+
+      function getCoveredCells(merges, visibleRange) {
+        const covered = new Set();
+        const visibleMerges = [];
+
+        for (const merge of merges || []) {
+          const startRow = Math.max(merge.s.r, visibleRange.s.r);
+          const endRow = Math.min(merge.e.r, visibleRange.e.r);
+          const startCol = Math.max(merge.s.c, visibleRange.s.c);
+          const endCol = Math.min(merge.e.c, visibleRange.e.c);
+          if (startRow > endRow || startCol > endCol) continue;
+
+          const clipped = {
+            s: { r: startRow, c: startCol },
+            e: { r: endRow, c: endCol },
+            original: merge,
+          };
+          visibleMerges.push(clipped);
+
+          for (let row = startRow; row <= endRow; row += 1) {
+            for (let col = startCol; col <= endCol; col += 1) {
+              if (row === startRow && col === startCol) continue;
+              covered.add(`${row}:${col}`);
+            }
+          }
+        }
+
+        return { covered, visibleMerges };
+      }
+
+      function findMergeAt(visibleMerges, row, col) {
+        return visibleMerges.find((merge) => merge.s.r === row && merge.s.c === col);
+      }
+
+      function applyCellStyle(td, cell, colInfo, rowInfo) {
+        const columnWidth = Math.max(38, Math.round(((colInfo && colInfo.wpx) || 64) * 1.1));
+        td.style.width = `${columnWidth}px`;
+
+        if (rowInfo && rowInfo.hpx) {
+          td.style.height = `${Math.max(20, Math.round(rowInfo.hpx))}px`;
+        }
+
+        const style = cell && cell.s;
+        if (!style) return;
+
+        if (style.alignment) {
+          if (style.alignment.horizontal) td.style.textAlign = style.alignment.horizontal;
+          if (style.alignment.vertical) td.style.verticalAlign = style.alignment.vertical;
+        }
+        if (style.font) {
+          if (style.font.bold) td.style.fontWeight = '700';
+          if (style.font.italic) td.style.fontStyle = 'italic';
+          if (style.font.sz) td.style.fontSize = `${style.font.sz}px`;
+        }
+      }
+
+      function renderSheet(workbook) {
+        const targetSheetName = sheetName || workbook.SheetNames[0];
+        const sheet = workbook.Sheets[targetSheetName];
+        if (!sheet) {
+          throw new Error(`找不到工作表：${targetSheetName}`);
+        }
+
+        const range = normalizeRange(sheet);
+        const merges = getCoveredCells(sheet['!merges'], range);
+        const table = document.createElement('table');
+        const colInfos = sheet['!cols'] || [];
+        const rowInfos = sheet['!rows'] || [];
+
+        for (let row = range.s.r; row <= range.e.r; row += 1) {
+          const tr = document.createElement('tr');
+          const rowInfo = rowInfos[row];
+
+          for (let col = range.s.c; col <= range.e.c; col += 1) {
+            if (merges.covered.has(`${row}:${col}`)) continue;
+
+            const address = XLSX.utils.encode_cell({ r: row, c: col });
+            const cell = sheet[address];
+            const td = document.createElement('td');
+            const value = getCellText(cell);
+            const merge = findMergeAt(merges.visibleMerges, row, col);
+
+            if (merge) {
+              const colspan = merge.e.c - merge.s.c + 1;
+              const rowspan = merge.e.r - merge.s.r + 1;
+              if (colspan > 1) td.colSpan = colspan;
+              if (rowspan > 1) td.rowSpan = rowspan;
+              td.classList.add('merged');
+            }
+
+            if (!value) td.classList.add('empty');
+            td.textContent = value || '.';
+            applyCellStyle(td, cell, colInfos[col], rowInfo);
+            tr.appendChild(td);
+          }
+
+          table.appendChild(tr);
+        }
+
+        viewerEl.replaceChildren(table);
+        statusEl.hidden = true;
+        viewerEl.hidden = false;
+      }
+
+      async function loadWorkbook() {
+        if (!fileUrl) {
+          showError('缺少文件地址。示例：?file=/demo.xlsx&sheetName=Sheet1&range=A1:AG15');
+          return;
+        }
+
+        try {
+          const response = await fetch(fileUrl, {
+            credentials: getQueryBoolean('credentials', true) ? 'include' : 'same-origin',
+          });
+          if (!response.ok) {
+            throw new Error(`文件请求失败：${response.status} ${response.statusText}`);
+          }
+          const buffer = await response.arrayBuffer();
+          const workbook = XLSX.read(buffer, { type: 'array', cellStyles: true, cellDates: true });
+          renderSheet(workbook);
+        } catch (error) {
+          showError(error instanceof Error ? error.message : String(error));
+        }
+      }
+
+      loadWorkbook();
+    </script>
+  </body>
+</html>

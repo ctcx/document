@@ -124,6 +124,19 @@ window.addEventListener('message', (e) => {
 
 → **[Full API reference](docs/embed-api.md)** — all message types, options, and examples including auth, read-only mode, and save flow.
 
+### XLSX range-only viewer
+
+If you only need to show a fixed area from one worksheet without the editor toolbar, formula bar, or sheet tabs, embed the standalone range viewer:
+
+```html
+<iframe
+  src="https://your-deployment/xlsx-range-viewer.html?file=/files/report.xlsx&sheetName=Sheet1&range=A1:AG15"
+  style="width: 100%; height: 640px; border: 0"
+></iframe>
+```
+
+Supported parameters include `file` / `url` / `src` / `path`, `sheetName` / `sheet`, `range` / `area`, and `credentials`. See [Chinese API docs](docs/embed-api.zh.md) for the full usage notes.
+
 ---
 
 ## 🚀 Deployment
